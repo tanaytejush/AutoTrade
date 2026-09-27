@@ -1,4 +1,5 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import https from "node:https";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "csv-parse/sync";
@@ -33,25 +34,22 @@ function headers(): HeadersInit {
 
 export async function getIntradayMarginForOneShare(
   securityId: string,
-  price: number
+  price: number,
+  requestImpl: MarginRequest = requestMargin
 ): Promise<number> {
-  const data = await requestJson(
-    `${baseUrl()}/margin`,
-    {
-      method: "GET",
-      headers: { ...headers(), "Content-Type": "application/json" },
-      body: JSON.stringify({
-        segment: "EQUITY",
-        exchange: "NSE",
-        securityID: securityId,
-        txnType: "BUY",
-        quantity: "1",
-        price: String(price),
-        product: "INTRADAY"
-      })
-    },
-    provider
-  );
+  const data = await requestImpl({
+    url: `${baseUrl()}/margin`,
+    token: String(process.env.INDMONEY_ACCESS_TOKEN ?? ""),
+    body: JSON.stringify({
+      segment: "EQUITY",
+      exchange: "NSE",
+      securityID: securityId,
+      txnType: "BUY",
+      quantity: "1",
+      price: String(price),
+      product: "INTRADAY"
+    })
+  });
   if (!data || typeof data !== "object" || !("status" in data) || data.status !== "success" ||
       !("data" in data) || !data.data || typeof data.data !== "object") {
     throw malformed(provider, "margin response must contain status success and data");
@@ -59,6 +57,51 @@ export async function getIntradayMarginForOneShare(
   const margin = (data.data as Record<string, unknown>).total_margin;
   return numberField(margin, provider, "margin total_margin");
 }
+
+interface MarginRequestOptions {
+  url: string;
+  token: string;
+  body: string;
+}
+
+type MarginRequest = (options: MarginRequestOptions) => Promise<unknown>;
+
+const requestMargin: MarginRequest = (options) => new Promise((resolve, reject) => {
+  if (!options.token) {
+    reject(new Error("INDMONEY_ACCESS_TOKEN is required for read-only broker calls."));
+    return;
+  }
+  const request = https.request(options.url, {
+    method: "GET",
+    headers: {
+      Authorization: options.token,
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(options.body)
+    }
+  }, (response) => {
+    let body = "";
+    response.setEncoding("utf8");
+    response.on("data", (chunk: string) => { body += chunk; });
+    response.on("end", () => {
+      if (response.statusCode === 401 || response.statusCode === 403) {
+        reject(new Error("INDmoney token is expired or unauthorized."));
+        return;
+      }
+      if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+        reject(new Error(`INDmoney margin request failed with HTTP ${response.statusCode ?? "unknown"}.`));
+        return;
+      }
+      try {
+        resolve(JSON.parse(body) as unknown);
+      } catch {
+        reject(new Error("INDmoney returned malformed margin JSON."));
+      }
+    });
+  });
+  request.on("error", reject);
+  request.write(options.body);
+  request.end();
+});
 
 export function parseEquityInstruments(csv: string): EquityInstrument[] {
   let skippedRows = 0;

@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getBroker } from "../broker/router.js";
+import { getIntradayMarginForOneShare, resolveInstrumentToken } from "../broker/india.js";
 import { requestJson, requestText } from "../broker/http.js";
 
 dotenv.config({
@@ -41,6 +42,11 @@ await check("instruments", async () => {
 });
 await check("LTP", async () => {
   await broker.getQuote(symbol);
+});
+await check("margin calculator (1 share intraday)", async () => {
+  const tokenForMargin = await resolveInstrumentToken(symbol);
+  const quote = await broker.getQuote(symbol);
+  await getIntradayMarginForOneShare(tokenForMargin.split("_")[1], quote.price);
 });
 await check("holdings", async () => {
   await broker.getHoldings();

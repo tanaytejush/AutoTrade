@@ -4,11 +4,26 @@ import { test } from "node:test";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  getIntradayMarginForOneShare,
   parseEquityInstruments,
   parseHoldingsResponse,
   parseLtpResponse,
   resolveInstrumentTokenFromRows
 } from "./india.js";
+
+test("parses mocked read-only intraday margin calculation", async () => {
+  const calls: Array<{ url: string; token: string; body: string }> = [];
+  const margin = await getIntradayMarginForOneShare("2885", 1226, async (request) => {
+    calls.push(request);
+    return {
+      status: "success",
+      data: { total_margin: 245.2 }
+    };
+  });
+  assert.equal(margin, 245.2);
+  assert.equal(calls[0].url.endsWith("/margin"), true);
+  assert.equal(calls[0].body.includes('"quantity":"1"'), true);
+});
 
 const sampleCsv = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "fixtures", "instruments-equity-sample.csv"),
