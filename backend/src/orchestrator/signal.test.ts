@@ -7,8 +7,8 @@ import { runSignalMode, type SignalApi } from "./signal.js";
 import type { PaperClock } from "./run.js";
 import type { Candle } from "../data/historical.js";
 
-function makeClock(): PaperClock {
-  let current = new Date("2026-09-25T09:05:00+05:30");
+function clockAt(value: string): PaperClock {
+  let current = new Date(value);
   return {
     now: () => new Date(current),
     async sleep() { current = new Date(current.getTime() + 60_000); }
@@ -25,22 +25,20 @@ function candles(symbol: string): Candle[] {
   ];
 }
 
-test("manual signal confirmation records fill, exit, and raw positions", async () => {
-  process.env.PAPER_TRADING = "true";
-  const directory = await mkdtemp(join(tmpdir(), "signal-mode-"));
-  const symbol = "CIPLA";
-  const rows = candles(symbol);
-  const api: SignalApi = {
+function testApi(rows: Candle[], symbol: string): SignalApi {
+  return {
     funds: async () => ({ intradayAvailable: 500 }),
     quote: async () => ({ price: 101 }),
     quoteBatch: async (symbols) => new Map(symbols.map((item) => [item, { price: 101 }])),
     resolve: async (item) => item,
     candles: async () => rows,
-    positions: async () => ({ positions: [{ symbol, quantity: 16 }] }),
-    positionsParsed: async () => [{ symbol, quantity: 16 }],
+    positions: async () => ({ positions: [] }),
+    positionsParsed: async () => [],
     niftyGapPercent: async () => 0
   };
-  const answers = ["y", "101,16"];
+}
+
+async function captureOutput<T>(operation: () => Promise<T>): Promise<{ result: T; output: string[] }> {
   const originalWrite = process.stdout.write;
   const output: string[] = [];
   process.stdout.write = ((value: string | Uint8Array) => {
@@ -48,19 +46,98 @@ test("manual signal confirmation records fill, exit, and raw positions", async (
     return true;
   }) as typeof process.stdout.write;
   try {
-    await runSignalMode({
+    return { result: await operation(), output };
+  } finally {
+    process.stdout.write = originalWrite;
+  }
+}
+
+test("manual signal confirmation records fill, exit, and raw positions", async () => {
+  const previousPaperTrading = process.env.PAPER_TRADING;
+  process.env.PAPER_TRADING = "true";
+  const directory = await mkdtemp(join(tmpdir(), "signal-mode-"));
+  const symbol = "CIPLA";
+  const rows = candles(symbol);
+  const api: SignalApi = {
+    ...testApi(rows, symbol),
+    positions: async () => ({ positions: [{ symbol, quantity: 16 }] }),
+    positionsParsed: async () => [{ symbol, quantity: 16 }]
+  };
+  const answers = ["y", "101,16"];
+  try {
+    const { output } = await captureOutput(() => runSignalMode({
       replay: true,
       replayDate: "2026-09-25",
-      clock: makeClock(),
+      clock: clockAt("2026-09-25T09:05:00+05:30"),
       api,
       input: { ask: async () => answers.shift() ?? null },
       logDirectory: directory,
       positionsDirectory: directory
-    });
+    }));
+    assert.ok(output.some((line) => line.includes("BUY 16 CIPLA intraday (MIS)")));
+    assert.ok(output.some((line) => line.includes("EXIT NOW: SELL 16 CIPLA")));
   } finally {
-    process.stdout.write = originalWrite;
     await rm(directory, { recursive: true, force: true });
+    if (previousPaperTrading === undefined) delete process.env.PAPER_TRADING;
+    else process.env.PAPER_TRADING = previousPaperTrading;
   }
-  assert.ok(output.some((line) => line.includes("BUY 16 CIPLA intraday (MIS)")));
-  assert.ok(output.some((line) => line.includes("EXIT NOW: SELL 16 CIPLA")));
+});
+
+test("breakout signal closing at 14:35 is rejected by the live cutoff", async () => {
+  const previousPaperTrading = process.env.PAPER_TRADING;
+  process.env.PAPER_TRADING = "true";
+  const directory = await mkdtemp(join(tmpdir(), "signal-cutoff-"));
+  const symbol = "CIPLA";
+  const base = new Date("2026-09-25T09:15:00+05:30").getTime();
+  const rows = [
+    ...candles(symbol).slice(0, 3),
+    { scripCode: symbol, interval: "5minute" as const, timeMs: new Date("2026-09-25T14:25:00+05:30").getTime(), open: 100, high: 100.2, low: 99.8, close: 100, volume: 1 },
+    { scripCode: symbol, interval: "5minute" as const, timeMs: new Date("2026-09-25T14:30:00+05:30").getTime(), open: 100, high: 101.2, low: 100, close: 101, volume: 1 }
+  ];
+  try {
+    const { output } = await captureOutput(() => runSignalMode({
+      replay: true,
+      replayDate: "2026-09-25",
+      clock: clockAt("2026-09-25T09:05:00+05:30"),
+      api: testApi(rows, symbol),
+      logDirectory: directory,
+      positionsDirectory: directory
+    }));
+    assert.equal(output.some((line) => line.includes("BUY ")), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+    if (previousPaperTrading === undefined) delete process.env.PAPER_TRADING;
+    else process.env.PAPER_TRADING = previousPaperTrading;
+  }
+});
+
+test("late start misses a breakout that closed before startup", async () => {
+  const previousPaperTrading = process.env.PAPER_TRADING;
+  process.env.PAPER_TRADING = "true";
+  const directory = await mkdtemp(join(tmpdir(), "signal-late-start-"));
+  const symbol = "CIPLA";
+  const base = new Date("2026-09-25T09:15:00+05:30").getTime();
+  const rows = [
+    ...candles(symbol).slice(0, 3),
+    { scripCode: symbol, interval: "5minute" as const, timeMs: base + 900_000, open: 100, high: 100.2, low: 99.8, close: 100, volume: 1 },
+    { scripCode: symbol, interval: "5minute" as const, timeMs: base + 1_200_000, open: 100, high: 101.2, low: 100, close: 101, volume: 1 }
+  ];
+  try {
+    const { output } = await captureOutput(() => runSignalMode({
+      replay: true,
+      replayDate: "2026-09-25",
+      clock: clockAt("2026-09-25T10:00:00+05:30"),
+      api: testApi(rows, symbol),
+      logDirectory: directory,
+      positionsDirectory: directory
+    }));
+    const log = await readFile(join(directory, "2026-09-25.jsonl"), "utf8");
+    assert.equal(output.some((line) => line.includes("BUY ")), false);
+    assert.match(log, /"event":"missed"/);
+    assert.match(log, /breakout before start/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+    if (previousPaperTrading === undefined) delete process.env.PAPER_TRADING;
+    else process.env.PAPER_TRADING = previousPaperTrading;
+  }
 });

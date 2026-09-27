@@ -1,7 +1,3 @@
-import dotenv from "dotenv";
-
-dotenv.config();
-
 const paperTradingValue = process.env.PAPER_TRADING;
 
 if (paperTradingValue !== "true" && paperTradingValue !== "false") {

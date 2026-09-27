@@ -5,7 +5,7 @@ Small monorepo skeleton for a trading bot. The backend uses **Node.js, Express, 
 ## Setup
 
 1. Install Node.js 20 or newer.
-2. Copy `.env.example` to `.env` and adjust local values. Keep real credentials out of source control.
+2. Copy `.env.example` to `backend/.env` and adjust local values. Runtime commands load only `backend/.env`; keep real credentials out of source control.
 3. Install dependencies from the repository root:
 
    ```bash

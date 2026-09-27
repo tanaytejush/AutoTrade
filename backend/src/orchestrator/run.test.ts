@@ -1,10 +1,14 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { BrokerError } from "../../broker/types.js";
 import { PAPER_SYMBOLS, retry, runPaperOrchestrator, shouldRetry, type PaperApi, type PaperClock } from "./run.js";
+
+afterEach(() => {
+  delete process.env.PAPER_TRADING;
+});
 
 const day = "2026-09-25";
 

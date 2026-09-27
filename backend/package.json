@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx --import ./scripts/load-env.ts watch src/server.ts",
     "build": "tsc",
-    "test": "tsx --test src/config.test.ts broker/india.test.ts src/data/historical.test.ts src/data/nse-holidays.test.ts src/analysis/analyzer.test.ts src/risk/costs.test.ts src/risk/engine.test.ts src/backtest/engine.test.ts src/strategy/orb.test.ts src/orchestrator/run.test.ts src/orchestrator/signal.test.ts",
+    "test": "tsx --import ./scripts/test-env.ts --test src/config.test.ts broker/india.test.ts src/data/historical.test.ts src/data/nse-holidays.test.ts src/analysis/analyzer.test.ts src/risk/costs.test.ts src/risk/engine.test.ts src/backtest/engine.test.ts src/strategy/orb.test.ts src/orchestrator/run.test.ts src/orchestrator/signal.test.ts",
     "manual:brokers": "tsx scripts/manual-broker-test.ts",
     "analyze": "tsx scripts/analyze.ts",
     "analyze:all": "tsx scripts/analyze-all.ts",
@@ -14,8 +14,8 @@
     "backtest:check": "tsx scripts/backtest-check.ts",
     "fetch:backtest-data": "tsx scripts/fetch-backtest-data.ts",
     "backtest:orb": "tsx scripts/backtest-orb.ts"
-    ,"bot:paper": "tsx scripts/paper-bot.ts"
-    ,"bot:signal": "tsx scripts/paper-bot.ts"
+    ,"bot:paper": "tsx --import ./scripts/load-env.ts scripts/paper-bot.ts"
+    ,"bot:signal": "tsx --import ./scripts/load-env.ts scripts/paper-bot.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

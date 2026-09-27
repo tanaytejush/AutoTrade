@@ -114,11 +114,22 @@ function closePnl(side: OrbSide, entry: number, exit: number, quantity: number) 
   return { gross, costs, net: gross - costs };
 }
 
+function firstSignal(rows: Candle[]) {
+  const range = calculateOpeningRange(rows);
+  if (!range) return null;
+  for (let index = ORB_CONFIG.openingCandles; index < rows.length; index += 1) {
+    const signal = getOrbSignal(rows, range, index);
+    if (signal) return { signal, candle: rows[index] };
+  }
+  return null;
+}
+
 export async function runSignalMode(options: SignalOptions = {}): Promise<void> {
   const clock = options.clock ?? realClock;
   const api = options.api ?? realApi;
   const replay = options.replay === true;
   const now = clock.now();
+  const startedAtMs = now.getTime();
   if (!isNormalTradingDay(now)) {
     console.log(`not a trading day (${dayOf(now)}); exiting`);
     return;
@@ -155,6 +166,24 @@ export async function runSignalMode(options: SignalOptions = {}): Promise<void> 
     await Promise.all(PAPER_SYMBOLS.map((symbol) => call(() => api.resolve(symbol))));
   }
   let gap: number | null = replay ? 0 : null;
+  if (!replay) {
+    try {
+      gap = await call(() => api.niftyGapPercent());
+    } catch (error) {
+      await log("nifty_gap_error", { message: error instanceof Error ? error.message : String(error) });
+      gap = Number.POSITIVE_INFINITY;
+    }
+    await log("nifty_gap_check", { gapPercent: gap, checkedAtStartup: true });
+    if (gap !== null && Math.abs(gap) > SIGNAL_NIFTY_GAP_LIMIT_PERCENT) {
+      console.log("Big gap day: no trades today");
+      await log("big_gap_day", { gapPercent: gap });
+      return;
+    }
+  }
+  if (clockTime(now) > "14:30") {
+    console.log("Too late for new entries today");
+    await log("late_start", { startedAt: clockTime(now), entriesDisabled: true });
+  }
   const funds = replay ? { intradayAvailable: 500 } : await call(() => api.funds());
   const state: RiskState = { eqMis: funds.intradayAvailable ?? 0, openPositions: 0, tradesToday: 0, dailyLoss: 0 };
   let signals = 0;
@@ -165,32 +194,28 @@ export async function runSignalMode(options: SignalOptions = {}): Promise<void> 
   const expectedSignals: Array<Record<string, unknown>> = [];
   let finishedDay = false;
   const seenSignals = new Set<string>();
+  const missedBeforeStart = new Set<string>();
   while (!finishedDay && clockTime(clock.now()) < "15:15") {
     const current = clock.now();
-    if (current.getHours() === 9 && current.getMinutes() === 16 && gap === null) {
-      try {
-        gap = await call(() => api.niftyGapPercent());
-      } catch (error) {
-        await log("nifty_gap_error", { message: error instanceof Error ? error.message : String(error) });
-        gap = Number.POSITIVE_INFINITY;
-      }
-      const checkedGap = gap;
-      await log("nifty_gap_check", { gapPercent: checkedGap });
-      if (checkedGap !== null && Math.abs(checkedGap) > SIGNAL_NIFTY_GAP_LIMIT_PERCENT) {
-        console.log("Big gap day: no trades today");
-        await log("big_gap_day", { gapPercent: checkedGap });
-        return;
-      }
-    }
+    const tooLateForEntries = clockTime(current) > "14:30";
     if (!position && state.tradesToday < SIGNAL_MAX_TRADES_PER_DAY && clockTime(current) >= "09:20") {
       for (const symbol of PAPER_SYMBOLS) {
         const rows = replay
           ? data.get(symbol)!.filter((candle) => candle.timeMs + 5 * 60_000 <= current.getTime())
           : await call(() => api.candles(symbol, start, new Date(current.getTime() - 10_000)));
         if (rows.length < ORB_CONFIG.openingCandles + 1) continue;
-        const range = calculateOpeningRange(rows);
-        const signal = range ? getOrbSignal(rows, range, rows.length - 1) : null;
-        if (!signal) continue;
+        const candidate = firstSignal(rows);
+        if (!candidate) continue;
+        const { signal, candle } = candidate;
+        if (candle.timeMs + 5 * 60_000 <= startedAtMs) {
+          if (!missedBeforeStart.has(symbol)) {
+            missedBeforeStart.add(symbol);
+            seenSignals.add(symbol);
+            await log("missed", { symbol, reason: "breakout before start", signalTime: clockTime(signal.signalTimeMs) });
+          }
+          continue;
+        }
+        if (tooLateForEntries) continue;
         if (seenSignals.has(symbol)) continue;
         seenSignals.add(symbol);
         expectedSignals.push({
