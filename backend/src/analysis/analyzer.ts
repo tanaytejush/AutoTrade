@@ -1,6 +1,7 @@
 import { getCachedCandles, filterCandlesForBacktest, type Candle } from "../data/historical.js";
 import { isNormalTradingDay } from "../data/nse-holidays.js";
 import { ANALYZER_THRESHOLDS as thresholds } from "./thresholds.js";
+import { MAX_TRADING_CAPITAL } from "../../config.js";
 
 export interface AnalysisResult {
   symbol: string;
@@ -11,11 +12,13 @@ export interface AnalysisResult {
     dailyReturnStandardDeviationPercent: number;
     averageDailyVolume20: number;
     averageDailyTradedValueRupees20: number;
+    currentPrice: number | null;
     closeVsMovingAverage20Percent: number;
     closeVsMovingAverage50Percent: number;
     gapDays: number;
     gapObservationDays: number;
     gapRiskPercent: number;
+    marginForOneShare: number | null;
     maxDrawdownPercent: number;
     costFit: "not checked yet";
   };
@@ -77,15 +80,28 @@ function calculateMaxDrawdown(candles: Candle[]): number {
   return maximum;
 }
 
-export function analyzeCandles(symbol: string, sourceCandles: Candle[]): AnalysisResult {
+function oneYearWindow(candles: Candle[]): Candle[] {
+  const last = candles.at(-1);
+  if (!last) return [];
+  const cutoff = new Date(last.timeMs);
+  cutoff.setUTCFullYear(cutoff.getUTCFullYear() - 1);
+  return candles.filter((candle) => candle.timeMs >= cutoff.getTime());
+}
+
+export function analyzeCandles(
+  symbol: string,
+  sourceCandles: Candle[],
+  options: { marginForOneShare?: number | null; currentPrice?: number | null } = {}
+): AnalysisResult {
   const candles = filterCandlesForBacktest(sourceCandles)
     .filter((candle) => isNormalTradingDay(new Date(candle.timeMs)))
     .sort((a, b) => a.timeMs - b.timeMs);
   const recent20 = asOf(candles, 20);
   const recent60 = asOf(candles, 60);
-  const returns = candles.slice(1).map((candle, index) => (candle.close / candles[index].close - 1) * 100);
-  const gapDays = candles.slice(1).filter((candle, index) =>
-    Math.abs((candle.open / candles[index].close - 1) * 100) > 1
+  const recentYear = oneYearWindow(candles);
+  const returns = recentYear.slice(1).map((candle, index) => (candle.close / recentYear[index].close - 1) * 100);
+  const gapDays = recentYear.slice(1).filter((candle, index) =>
+    Math.abs((candle.open / recentYear[index].close - 1) * 100) > 1
   ).length;
   const last = candles.at(-1);
   const reasons: string[] = [];
@@ -102,9 +118,14 @@ export function analyzeCandles(symbol: string, sourceCandles: Candle[]): Analysi
   } else if (averageRange20 > thresholds.maximumVolatilityPercent) {
     reasons.push("Average daily range volatility is elevated");
   }
+  const marginForOneShare = options.marginForOneShare ?? null;
+  if (marginForOneShare !== null && marginForOneShare > MAX_TRADING_CAPITAL) {
+    reasons.push("Can't afford 1 share at current capital");
+  }
   const verdict = candles.length < thresholds.minimumHistoryDays
     ? "AVOID"
-    : reasons.includes("Average daily traded value below ₹50 crore")
+    : reasons.includes("Average daily traded value below ₹50 crore") ||
+        reasons.includes("Can't afford 1 share at current capital")
       ? "AVOID"
       : reasons.length === 0 ? "TRADEABLE" : "WATCH";
   return {
@@ -121,12 +142,14 @@ export function analyzeCandles(symbol: string, sourceCandles: Candle[]): Analysi
       dailyReturnStandardDeviationPercent: standardDeviation(returns),
       averageDailyVolume20: mean(recent20.map((candle) => candle.volume)),
       averageDailyTradedValueRupees20: mean(recent20.map((candle) => candle.volume * candle.close)),
+      currentPrice: options.currentPrice ?? last?.close ?? null,
       closeVsMovingAverage20Percent: last ? ((last.close / movingAverage(candles, 20)) - 1) * 100 : 0,
       closeVsMovingAverage50Percent: last ? ((last.close / movingAverage(candles, 50)) - 1) * 100 : 0,
       gapDays,
-      gapObservationDays: Math.max(0, candles.length - 1),
-      gapRiskPercent: candles.length > 1 ? (gapDays / (candles.length - 1)) * 100 : 0,
-      maxDrawdownPercent: calculateMaxDrawdown(candles),
+      gapObservationDays: Math.max(0, recentYear.length - 1),
+      gapRiskPercent: recentYear.length > 1 ? (gapDays / (recentYear.length - 1)) * 100 : 0,
+      maxDrawdownPercent: calculateMaxDrawdown(recentYear),
+      marginForOneShare,
       costFit: "not checked yet"
     },
     verdict,

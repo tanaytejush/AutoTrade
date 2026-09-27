@@ -11,3 +11,12 @@ if (paperTradingValue !== "true" && paperTradingValue !== "false") {
 }
 
 export const PAPER_TRADING = paperTradingValue === "true";
+
+const maxTradingCapitalValue = process.env.MAX_TRADING_CAPITAL;
+export const MAX_TRADING_CAPITAL = maxTradingCapitalValue === undefined
+  ? 500
+  : Number(maxTradingCapitalValue);
+
+if (!Number.isFinite(MAX_TRADING_CAPITAL) || MAX_TRADING_CAPITAL < 0) {
+  throw new Error("MAX_TRADING_CAPITAL must be a non-negative number.");
+}

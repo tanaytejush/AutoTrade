@@ -63,3 +63,17 @@ test("trend information does not change the verdict", () => {
   assert.equal(result.verdict, "TRADEABLE");
   assert.equal(result.reasons.some((reason) => reason.includes("moving averages")), false);
 });
+
+test("marks a stock unaffordable when one-share margin exceeds capital", () => {
+  const result = analyzeCandles("TEST", candles(80, () => 100, 10_000_000), {
+    marginForOneShare: 501
+  });
+  assert.equal(result.verdict, "AVOID");
+  assert.ok(result.reasons.includes("Can't afford 1 share at current capital"));
+});
+
+test("drawdown uses only the fixed one-year window", () => {
+  const data = candles(600, (index) => index === 0 ? 1_000 : 100, 10_000_000);
+  const result = analyzeCandles("TEST", data);
+  assert.ok(result.metrics.maxDrawdownPercent < 1);
+});

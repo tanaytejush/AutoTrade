@@ -27,7 +27,37 @@ function headers(): HeadersInit {
   if (!token) {
     throw new Error("INDMONEY_ACCESS_TOKEN is required for read-only broker calls.");
   }
+
   return { Authorization: token };
+}
+
+export async function getIntradayMarginForOneShare(
+  securityId: string,
+  price: number
+): Promise<number> {
+  const data = await requestJson(
+    `${baseUrl()}/margin`,
+    {
+      method: "GET",
+      headers: { ...headers(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        segment: "EQUITY",
+        exchange: "NSE",
+        securityID: securityId,
+        txnType: "BUY",
+        quantity: "1",
+        price: String(price),
+        product: "INTRADAY"
+      })
+    },
+    provider
+  );
+  if (!data || typeof data !== "object" || !("status" in data) || data.status !== "success" ||
+      !("data" in data) || !data.data || typeof data.data !== "object") {
+    throw malformed(provider, "margin response must contain status success and data");
+  }
+  const margin = (data.data as Record<string, unknown>).total_margin;
+  return numberField(margin, provider, "margin total_margin");
 }
 
 export function parseEquityInstruments(csv: string): EquityInstrument[] {
