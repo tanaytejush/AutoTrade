@@ -22,7 +22,7 @@ console.table({
   "avg traded value (20d)": inr(result.metrics.averageDailyTradedValueRupees20),
   "close vs MA20 %": result.metrics.closeVsMovingAverage20Percent,
   "close vs MA50 %": result.metrics.closeVsMovingAverage50Percent,
-  "gap risk %": result.metrics.gapRiskPercent,
+  "gap risk": `${result.metrics.gapDays} of ${result.metrics.gapObservationDays} (${result.metrics.gapRiskPercent.toFixed(1)}%)`,
   "max drawdown % (1y)": result.metrics.maxDrawdownPercent,
   "cost fit": result.metrics.costFit
 });

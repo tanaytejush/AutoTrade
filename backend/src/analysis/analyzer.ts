@@ -13,6 +13,8 @@ export interface AnalysisResult {
     averageDailyTradedValueRupees20: number;
     closeVsMovingAverage20Percent: number;
     closeVsMovingAverage50Percent: number;
+    gapDays: number;
+    gapObservationDays: number;
     gapRiskPercent: number;
     maxDrawdownPercent: number;
     costFit: "not checked yet";
@@ -121,6 +123,8 @@ export function analyzeCandles(symbol: string, sourceCandles: Candle[]): Analysi
       averageDailyTradedValueRupees20: mean(recent20.map((candle) => candle.volume * candle.close)),
       closeVsMovingAverage20Percent: last ? ((last.close / movingAverage(candles, 20)) - 1) * 100 : 0,
       closeVsMovingAverage50Percent: last ? ((last.close / movingAverage(candles, 50)) - 1) * 100 : 0,
+      gapDays,
+      gapObservationDays: Math.max(0, candles.length - 1),
       gapRiskPercent: candles.length > 1 ? (gapDays / (candles.length - 1)) * 100 : 0,
       maxDrawdownPercent: calculateMaxDrawdown(candles),
       costFit: "not checked yet"
@@ -132,7 +136,7 @@ export function analyzeCandles(symbol: string, sourceCandles: Candle[]): Analysi
 
 export async function analyzeSymbol(symbol: string, options: { databasePath?: string } = {}): Promise<AnalysisResult> {
   const end = new Date();
-  const start = new Date(end.getTime() - 366 * 24 * 60 * 60 * 1000);
+  const start = new Date(end.getTime() - 400 * 24 * 60 * 60 * 1000);
   const candles = await getCachedCandles(symbol, "1day", start, end, options);
   if (candles.length === 0) {
     throw new Error(`${symbol} daily data is not cached; real historical calls require authorization.`);
