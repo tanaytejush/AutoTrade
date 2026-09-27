@@ -323,6 +323,7 @@ export const indiaBroker: Broker = {
           currentPrice: quote.price,
           pnl: (quote.price - holding.averagePrice) * holding.quantity
         };
+
       })
     );
     return { holdings, raw };
@@ -368,3 +369,19 @@ export const indiaBroker: Broker = {
     };
   }
 };
+
+export async function getRawPositions(): Promise<unknown> {
+  const [equity, derivative] = await Promise.all([
+    requestJson(
+      `${baseUrl()}/portfolio/positions?segment=equity&product=cnc`,
+      { headers: headers() },
+      provider
+    ),
+    requestJson(
+      `${baseUrl()}/portfolio/positions?segment=derivative&product=margin`,
+      { headers: headers() },
+      provider
+    )
+  ]);
+  return { equity, derivative };
+}
