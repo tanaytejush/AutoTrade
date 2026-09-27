@@ -9,6 +9,7 @@ export const ANALYZER_THRESHOLDS = {
   maximumGapRiskPercent: 10,
   // Exposed as a review threshold for unusually wide daily ranges.
   maximumVolatilityPercent: 5,
+  costFitRangeMultiplier: 3,
   // Small deviations are noise; larger deviations from both averages merit review.
   movingAverageTolerancePercent: 1
 } as const;

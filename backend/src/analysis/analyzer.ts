@@ -2,6 +2,7 @@ import { getCachedCandles, filterCandlesForBacktest, type Candle } from "../data
 import { isNormalTradingDay } from "../data/nse-holidays.js";
 import { ANALYZER_THRESHOLDS as thresholds } from "./thresholds.js";
 import { MAX_TRADING_CAPITAL } from "../../config.js";
+import { breakEvenMovePct } from "../risk/costs.js";
 
 export interface AnalysisResult {
   symbol: string;
@@ -20,7 +21,7 @@ export interface AnalysisResult {
     gapRiskPercent: number;
     marginForOneShare: number | null;
     maxDrawdownPercent: number;
-    costFit: "not checked yet";
+    costFit: string;
   };
   verdict: "TRADEABLE" | "WATCH" | "AVOID";
   reasons: string[];
@@ -122,12 +123,18 @@ export function analyzeCandles(
   if (marginForOneShare !== null && marginForOneShare > MAX_TRADING_CAPITAL) {
     reasons.push("Can't afford 1 share at current capital");
   }
+  const costFit = last ? `${breakEvenMovePct(last.close, 1)}% break-even for 1 share` : "not checked yet";
+  if (last && averageRange20 < thresholds.costFitRangeMultiplier * breakEvenMovePct(last.close, 1)) {
+    reasons.push("Daily move too small to beat costs");
+  }
   const verdict = candles.length < thresholds.minimumHistoryDays
     ? "AVOID"
     : reasons.includes("Average daily traded value below ₹50 crore") ||
         reasons.includes("Can't afford 1 share at current capital")
       ? "AVOID"
-      : reasons.length === 0 ? "TRADEABLE" : "WATCH";
+      : reasons.some((reason) => reason === "Can't afford 1 share at current capital")
+        ? "AVOID"
+        : reasons.length === 0 ? "TRADEABLE" : "WATCH";
   return {
     symbol,
     metrics: {
@@ -150,7 +157,7 @@ export function analyzeCandles(
       gapRiskPercent: recentYear.length > 1 ? (gapDays / (recentYear.length - 1)) * 100 : 0,
       maxDrawdownPercent: calculateMaxDrawdown(recentYear),
       marginForOneShare,
-      costFit: "not checked yet"
+      costFit
     },
     verdict,
     reasons

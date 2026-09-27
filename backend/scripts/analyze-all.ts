@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadNifty50 } from "../src/data/universe/nifty50.js";
 import { resolveInstrumentToken, getIntradayMarginForOneShare, indiaBroker } from "../broker/india.js";
-import { fetchCandles } from "../src/data/historical.js";
+import { fetchCandles, getCachedCandles } from "../src/data/historical.js";
 import { analyzeCandles, type AnalysisResult } from "../src/analysis/analyzer.js";
 
 const universePath = resolve(fileURLToPath(new URL("../src/data/universe/nifty50.csv", import.meta.url)));
@@ -13,16 +13,23 @@ const start = new Date("2025-08-24T00:00:00+05:30");
 const results: Array<{ symbol: string; result: AnalysisResult }> = [];
 const failures: Array<{ symbol: string; step: string; error: string }> = [];
 const estimatedMarginPercent = 20;
+const cacheOnly = process.env.ANALYZE_CACHE_ONLY === "true";
 
 for (const constituent of constituents) {
   try {
-    const token = await resolveInstrumentToken(constituent.symbol);
-    const candles = await fetchCandles(constituent.symbol, "1day", start, end);
-    const quote = await indiaBroker.getQuote(constituent.symbol);
+    const candles = cacheOnly
+      ? await getCachedCandles(constituent.symbol, "1day", start, end)
+      : await fetchCandles(constituent.symbol, "1day", start, end);
+    if (candles.length === 0) throw new Error("daily data is not cached");
+    const token = cacheOnly ? "" : await resolveInstrumentToken(constituent.symbol);
+    const quote = cacheOnly
+      ? { price: candles.at(-1)!.close }
+      : await indiaBroker.getQuote(constituent.symbol);
     const securityId = token.split("_")[1];
     let margin: number;
     let marginLabel = "live";
     try {
+      if (cacheOnly) throw new Error("cache-only run: margin estimate required");
       margin = await getIntradayMarginForOneShare(securityId, quote.price);
       if (!Number.isFinite(margin) || margin <= 0) throw new Error("margin returned zero or a non-positive value");
     } catch (error) {
