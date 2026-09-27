@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx --test src/config.test.ts broker/india.test.ts src/data/historical.test.ts src/data/nse-holidays.test.ts",
-    "manual:brokers": "tsx scripts/manual-broker-test.ts"
+    "test": "tsx --test src/config.test.ts broker/india.test.ts src/data/historical.test.ts src/data/nse-holidays.test.ts src/analysis/analyzer.test.ts",
+    "manual:brokers": "tsx scripts/manual-broker-test.ts",
+    "analyze": "tsx scripts/analyze.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

@@ -251,6 +251,28 @@ export async function fetchCandles(
       const candles = await fetchWindow(scripCode, interval, start, end, request, throttle);
       transaction(candles, start, end);
     }
+
+    return database.prepare(
+      "SELECT scrip_code AS scripCode, interval, candle_time_ms AS timeMs, open, high, low, close, volume FROM market_candles WHERE scrip_code = ? AND interval = ? AND candle_time_ms >= ? AND candle_time_ms < ? ORDER BY candle_time_ms"
+    ).all(scripCode, interval, startMs, endMs) as Candle[];
+  } finally {
+    database.close();
+  }
+}
+
+export async function getCachedCandles(
+  symbol: string,
+  interval: HistoricalInterval,
+  startDate: Date,
+  endDate: Date,
+  request: Pick<HistoricalRequest, "databasePath" | "resolveInstrumentToken"> = {}
+): Promise<Candle[]> {
+  const startMs = epochMilliseconds(startDate);
+  const endMs = epochMilliseconds(endDate);
+  const resolveToken = request.resolveInstrumentToken ?? resolveInstrumentToken;
+  const scripCode = await resolveToken(symbol);
+  const database = getDatabase(request.databasePath ?? cachePath);
+  try {
     return database.prepare(
       "SELECT scrip_code AS scripCode, interval, candle_time_ms AS timeMs, open, high, low, close, volume FROM market_candles WHERE scrip_code = ? AND interval = ? AND candle_time_ms >= ? AND candle_time_ms < ? ORDER BY candle_time_ms"
     ).all(scripCode, interval, startMs, endMs) as Candle[];
