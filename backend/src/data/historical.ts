@@ -14,6 +14,12 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const REQUEST_SPACING_MS = 250;
 const MAX_RETRIES = 5;
 const cachePath = resolve(dirname(fileURLToPath(import.meta.url)), "../../cache/market-data.sqlite");
+const istDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
 
 export interface Candle {
   scripCode: string;
@@ -41,9 +47,7 @@ export interface GapReport {
 
 export function filterCandlesForBacktest(candles: Candle[]): Candle[] {
   return candles.filter((candle) => {
-    const date = new Date(candle.timeMs).toLocaleDateString("en-CA", {
-      timeZone: "Asia/Kolkata"
-    });
+    const date = istDateFormatter.format(new Date(candle.timeMs));
     return !isNseMuhuratDate(date);
   });
 }

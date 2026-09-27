@@ -3,24 +3,32 @@ import { filterCandlesForBacktest, type Candle } from "../data/historical.js";
 import { isNormalTradingDay } from "../data/nse-holidays.js";
 import { roundTripCost } from "../risk/costs.js";
 
+const istDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+const istTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata",
+  hour: "2-digit",
+  minute: "2-digit"
+});
+
 export interface BacktestSignal {
   stopLoss: number;
   target: number;
 }
 
 export interface BacktestStrategy {
-  onCandle(candles: Candle[]): BacktestSignal | null;
+  onCandle(candles: Candle[], index: number): BacktestSignal | null;
 }
 
 export const harnessCheckStrategy: BacktestStrategy = {
-  onCandle(candles) {
-    const latest = candles.at(-1);
+  onCandle(candles, index) {
+    const latest = candles[index];
     if (!latest) return null;
-    const time = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Asia/Kolkata",
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(new Date(latest.timeMs));
+    const time = istTimeFormatter.format(new Date(latest.timeMs));
     return time === "10:00" ? {
       stopLoss: latest.close * 0.99,
       target: latest.close * 1.01
@@ -53,11 +61,11 @@ export interface BacktestResult {
 }
 
 function istDate(candle: Candle): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(candle.timeMs));
+  return istDateFormatter.format(new Date(candle.timeMs));
 }
 
 function istTime(candle: Candle): string {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }).format(new Date(candle.timeMs));
+  return istTimeFormatter.format(new Date(candle.timeMs));
 }
 
 function testCutoff(candles: Candle[]): number {
@@ -73,6 +81,8 @@ export function runBacktest(sourceCandles: Candle[], strategy: BacktestStrategy,
   slippageRate?: number;
   dailyLossLimit?: number;
   testCutoffMs?: number;
+  onTrade?: (trade: BacktestTrade, period: "train" | "test") => void;
+  onProgress?: (phase: "middle") => void;
 } = {}): { train: BacktestResult; test: BacktestResult } {
   const candles = filterCandlesForBacktest(sourceCandles)
     .filter((candle) => isNormalTradingDay(new Date(candle.timeMs)))
@@ -88,6 +98,7 @@ export function runBacktest(sourceCandles: Candle[], strategy: BacktestStrategy,
   const lossLimit = options.dailyLossLimit ?? BACKTEST_DAILY_LOSS_LIMIT;
 
   for (let index = 0; index < candles.length; index += 1) {
+    if (index === Math.floor(candles.length / 2)) options.onProgress?.("middle");
     const candle = candles[index];
     const currentDay = istDate(candle);
     if (currentDay !== day) {
@@ -132,13 +143,15 @@ export function runBacktest(sourceCandles: Candle[], strategy: BacktestStrategy,
           exitReason: exitReason!
         };
         dayPnl += trade.netPnl;
-        byPeriod[candle.timeMs >= cutoff ? "test" : "train"].push(trade);
+        const period = candle.timeMs >= cutoff ? "test" : "train";
+        byPeriod[period].push(trade);
+        options.onTrade?.(trade, period);
         position = null;
         if (dayPnl <= -lossLimit) pending = null;
       }
     }
     if (!position && !pending && dayPnl > -lossLimit && index < candles.length - 1) {
-      const signal = strategy.onCandle(candles.slice(0, index + 1));
+      const signal = strategy.onCandle(candles, index);
       if (signal) pending = signal;
     }
   }
@@ -146,13 +159,15 @@ export function runBacktest(sourceCandles: Candle[], strategy: BacktestStrategy,
 }
 
 function summarize(trades: BacktestTrade[]): BacktestResult {
-  const wins = trades.filter((trade) => trade.netPnl > 0).map((trade) => trade.netPnl);
-  const losses = trades.filter((trade) => trade.netPnl < 0).map((trade) => trade.netPnl);
+  const wins: number[] = [];
+  const losses: number[] = [];
   let equity = 0;
   let peak = 0;
   let maxDrawdown = 0;
   const days = new Map<string, number>();
   for (const trade of trades) {
+    if (trade.netPnl > 0) wins.push(trade.netPnl);
+    if (trade.netPnl < 0) losses.push(trade.netPnl);
     equity += trade.netPnl;
     peak = Math.max(peak, equity);
     maxDrawdown = Math.max(maxDrawdown, peak - equity);

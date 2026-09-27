@@ -10,7 +10,7 @@ function sessionTime(index: number): string {
   const minutes = 15 + index * 5;
   return `2025-01-02T${String(9 + Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}:00+05:30`;
 }
-const signalStrategy: BacktestStrategy = { onCandle: (candles) => candles.length === 9 ? { stopLoss: 99, target: 101 } : null };
+const signalStrategy: BacktestStrategy = { onCandle: (_candles, index) => index === 8 ? { stopLoss: 99, target: 101 } : null };
 
 test("enters on the next candle open, not the signal candle", () => {
   const rows = Array.from({ length: 20 }, (_, i) => candle(sessionTime(i), 100));
@@ -41,10 +41,9 @@ test("forces an open position out at 15:10", () => {
 test("does not expose a future candle to the strategy", () => {
   let maximumSeen = 0;
   const strategy: BacktestStrategy = {
-    onCandle(candles) {
-      const latest = candles.at(-1)!;
-      maximumSeen = Math.max(maximumSeen, ...candles.map((candle) => candle.timeMs));
-      assert.equal(maximumSeen, latest.timeMs);
+    onCandle(candles, index) {
+      maximumSeen = Math.max(maximumSeen, candles[index].timeMs);
+      assert.equal(maximumSeen, candles[index].timeMs);
       return null;
     }
   };
@@ -53,8 +52,8 @@ test("does not expose a future candle to the strategy", () => {
 
 test("stops creating trades after the daily loss limit", () => {
   const strategy: BacktestStrategy = {
-    onCandle(candles) {
-      return candles.length === 1 || candles.length === 3
+    onCandle(_candles, index) {
+      return index === 0 || index === 2
         ? { stopLoss: 90, target: 110 }
         : null;
     }

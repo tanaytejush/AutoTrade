@@ -58,6 +58,13 @@ export const NSE_MUHURAT_BY_YEAR: Record<number, string[]> = {
   2026: ["2026-11-08"]
 };
 
+const istDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+
 export function isNseMuhuratDate(date: string): boolean {
   const year = Number(date.slice(0, 4));
   return NSE_MUHURAT_BY_YEAR[year]?.includes(date) ?? false;
@@ -65,12 +72,7 @@ export function isNseMuhuratDate(date: string): boolean {
 
 function istDateString(date: Date | string): string {
   if (typeof date === "string") return date;
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
+  return istDateFormatter.format(date);
 }
 
 export function isNormalTradingDay(date: Date | string): boolean {
