@@ -20,3 +20,8 @@ export const MAX_TRADING_CAPITAL = maxTradingCapitalValue === undefined
 if (!Number.isFinite(MAX_TRADING_CAPITAL) || MAX_TRADING_CAPITAL < 0) {
   throw new Error("MAX_TRADING_CAPITAL must be a non-negative number.");
 }
+
+export const BACKTEST_SLIPPAGE_RATE = 0.0005;
+export const BACKTEST_DAILY_LOSS_LIMIT = 50;
+export const BACKTEST_TEST_MONTHS = 8;
+export const INTRADAY_MARGIN_ESTIMATE_RATE = 0.2;

@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx --test src/config.test.ts broker/india.test.ts src/data/historical.test.ts src/data/nse-holidays.test.ts src/analysis/analyzer.test.ts src/risk/costs.test.ts",
+    "test": "tsx --test src/config.test.ts broker/india.test.ts src/data/historical.test.ts src/data/nse-holidays.test.ts src/analysis/analyzer.test.ts src/risk/costs.test.ts src/backtest/engine.test.ts",
     "manual:brokers": "tsx scripts/manual-broker-test.ts",
     "analyze": "tsx scripts/analyze.ts",
     "analyze:all": "tsx scripts/analyze-all.ts",
-    "costs": "tsx scripts/costs.ts"
+    "costs": "tsx scripts/costs.ts",
+    "backtest:check": "tsx scripts/backtest-check.ts",
+    "fetch:backtest-data": "tsx scripts/fetch-backtest-data.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
