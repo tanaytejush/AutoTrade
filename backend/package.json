@@ -6,16 +6,18 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "test": "tsx --test src/config.test.ts broker/india.test.ts",
+    "test": "tsx --test src/config.test.ts broker/india.test.ts src/data/historical.test.ts src/data/nse-holidays.test.ts",
     "manual:brokers": "tsx scripts/manual-broker-test.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "csv-parse": "^7.0.3",
     "dotenv": "^16.4.7",
     "express": "^5.1.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/node": "^22.13.10",

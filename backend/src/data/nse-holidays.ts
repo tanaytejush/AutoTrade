@@ -1,0 +1,65 @@
+export const NSE_HOLIDAYS_BY_YEAR: Record<number, string[]> = {
+  2025: [
+    "2025-02-26",
+    "2025-03-14",
+    "2025-03-31",
+    "2025-04-10",
+    "2025-04-14",
+    "2025-04-18",
+    "2025-05-01",
+    "2025-08-15",
+    "2025-08-27",
+    "2025-10-02",
+    "2025-10-22",
+    "2025-11-05",
+    "2025-12-25"
+  ],
+  2026: [
+    "2026-01-15",
+    "2026-01-26",
+    "2026-03-03",
+    "2026-03-26",
+    "2026-03-31",
+    "2026-04-03",
+    "2026-04-14",
+    "2026-05-01",
+    "2026-05-28",
+    "2026-06-26",
+    "2026-09-14",
+    "2026-10-02",
+    "2026-10-20",
+    "2026-11-10",
+    "2026-11-24",
+    "2026-12-25"
+  ]
+};
+
+export const NSE_MUHURAT_BY_YEAR: Record<number, string[]> = {
+  2025: ["2025-10-21"],
+  2026: ["2026-11-08"]
+};
+
+export function isNseMuhuratDate(date: string): boolean {
+  const year = Number(date.slice(0, 4));
+  return NSE_MUHURAT_BY_YEAR[year]?.includes(date) ?? false;
+}
+
+function istDateString(date: Date | string): string {
+  if (typeof date === "string") return date;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+export function isNormalTradingDay(date: Date | string): boolean {
+  const dateString = istDateString(date);
+  const weekday = new Date(`${dateString}T00:00:00Z`).getUTCDay();
+  const year = Number(dateString.slice(0, 4));
+  return weekday !== 0 &&
+    weekday !== 6 &&
+    !(NSE_HOLIDAYS_BY_YEAR[year]?.includes(dateString) ?? false) &&
+    !isNseMuhuratDate(dateString);
+}

@@ -197,12 +197,15 @@ export function parseHoldingsResponse(data: unknown): Array<{
 
 export function parseLtpResponse(data: unknown, scripCode: string, symbol: string): Quote {
   if (!data || typeof data !== "object" || !("status" in data) || data.status !== "success" ||
-      !("data" in data) || !data.data || typeof data.data !== "object" ||
-      !(scripCode in data.data) || !data.data[scripCode] ||
-      typeof data.data[scripCode] !== "object") {
+      !("data" in data) || !data.data || typeof data.data !== "object") {
     throw malformed(provider, `LTP response is missing data for ${scripCode}`);
   }
-  const entry = data.data[scripCode] as Record<string, unknown>;
+  const entries = data.data as Record<string, unknown>;
+  const value = entries[scripCode];
+  if (!value || typeof value !== "object") {
+    throw malformed(provider, `LTP response is missing data for ${scripCode}`);
+  }
+  const entry = value as Record<string, unknown>;
   const price = numberField(entry.live_price, provider, `${scripCode}.live_price`);
   if (price <= 0) {
     throw malformed(provider, `${scripCode}.live_price must be a positive number`);

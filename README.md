@@ -41,3 +41,5 @@ RUN_REAL_BROKER_TESTS=true npm run manual:brokers --workspace backend
 It calls only INDmoney quote, positions, and funds endpoints. The margin result includes the raw funds response and maps `eq_cnc` to delivery cash, `eq_mis` to intraday availability, and `option_buy` to F&O availability. It never places, modifies, or cancels orders. Never put credentials in source files or command history; use `backend/.env`. The real-account flag is opt-in.
 
 TODO: Holdings and positions row parsing is unverified against a real non-empty response. Must verify before enabling live orders (Step K).
+TODO: Backtester (Step F) must use filterCandlesForBacktest().
+Orchestrator (Step G) must use isNormalTradingDay().
