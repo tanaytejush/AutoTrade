@@ -5,12 +5,18 @@ import { runOrbBacktest } from "../src/strategy/orb.js";
 const symbols = ["CIPLA", "HINDUNILVR", "ICICIBANK", "NESTLEIND", "RELIANCE", "SBILIFE", "SUNPHARMA", "TATACONSUM"];
 const end = new Date("2026-09-26T00:00:00+05:30");
 const start = new Date(end.getTime() - 2 * 365 * 24 * 60 * 60 * 1000);
+let peakMemoryMb = process.memoryUsage().rss / 1024 / 1024;
+console.log(`memory start MB: ${peakMemoryMb.toFixed(1)}`);
 const data = new Map<string, Awaited<ReturnType<typeof getCachedCandles>>>();
 for (const symbol of symbols) {
   data.set(symbol, await getCachedCandles(symbol, "5minute", start, end));
 }
+peakMemoryMb = Math.max(peakMemoryMb, process.memoryUsage().rss / 1024 / 1024);
+console.log(`memory middle MB: ${peakMemoryMb.toFixed(1)}`);
 const cutoff = new Date("2026-01-26T00:00:00+05:30").getTime();
 const result = runOrbBacktest(data, cutoff);
+peakMemoryMb = Math.max(peakMemoryMb, process.memoryUsage().rss / 1024 / 1024);
+console.log(`memory end MB: ${peakMemoryMb.toFixed(1)}`);
 function print(label: string, summary: typeof result.totalTrain): void {
   console.log(label, {
     trades: summary.trades.length,
@@ -25,6 +31,7 @@ function print(label: string, summary: typeof result.totalTrain): void {
     maxDrawdown: summary.maxDrawdown.toFixed(2),
     worstDay: summary.worstDay.toFixed(2),
     skipped: summary.skipped
+    ,peakMemoryMb: peakMemoryMb.toFixed(1)
   });
 }
 const trainLoses = result.totalTrain.pnlAfterCosts < 0;

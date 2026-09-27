@@ -55,12 +55,19 @@ export interface OrbPeriodResult {
   worstDay: number;
 }
 
+const istDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit"
+});
+const istTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit"
+});
+
 function time(candle: Candle): string {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }).format(new Date(candle.timeMs));
+  return istTimeFormatter.format(new Date(candle.timeMs));
 }
 
 function date(candle: Candle): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(candle.timeMs));
+  return istDateFormatter.format(new Date(candle.timeMs));
 }
 
 function sameDay(a: Candle, b: Candle): boolean {
@@ -87,8 +94,8 @@ export function openingRangeSkip(range: OpeningRange): OrbSkipReason | null {
   return null;
 }
 
-export function getOrbSignal(candles: Candle[], range: OpeningRange): OrbSignal | null {
-  const latest = candles.at(-1);
+export function getOrbSignal(candles: Candle[], range: OpeningRange, index = candles.length - 1): OrbSignal | null {
+  const latest = candles[index];
   if (!latest || time(latest) < "09:30" || time(latest) > ORB_CONFIG.noEntryAfter) return null;
   if (latest.close > range.high) {
     const risk = latest.close - range.low;
@@ -139,68 +146,111 @@ function summarize(trades: OrbTrade[], skipped: Record<OrbSkipReason, number>, m
 }
 
 export function runOrbBacktest(bySymbol: Map<string, Candle[]>, testCutoffMs: number): { train: Map<string, OrbPeriodResult>; test: Map<string, OrbPeriodResult>; totalTrain: OrbPeriodResult; totalTest: OrbPeriodResult } {
-  const allTrades: OrbTrade[] = [];
-  const allSkipped = { train: emptySkipped(), test: emptySkipped() };
-  const tradesByDate = new Map<string, number>();
-  const periodResults = { train: new Map<string, OrbPeriodResult>(), test: new Map<string, OrbPeriodResult>() };
+  const prepared = new Map<string, Candle[]>();
+  const sessions = new Map<string, Map<string, Candle[]>>();
+  const allDates = new Set<string>();
   for (const [symbol, source] of bySymbol) {
-    const candles = filterCandlesForBacktest(source).filter((candle) => isNormalTradingDay(new Date(candle.timeMs))).sort((a, b) => a.timeMs - b.timeMs);
-    const trades: OrbTrade[] = [];
-    const skipped = { train: emptySkipped(), test: emptySkipped() };
-    const periodFor = (timeMs: number): "train" | "test" => timeMs < testCutoffMs ? "train" : "test";
-    const sessions: Candle[][] = [];
+    const candles = filterCandlesForBacktest(source)
+      .filter((candle) => isNormalTradingDay(new Date(candle.timeMs)))
+      .sort((a, b) => a.timeMs - b.timeMs);
+    prepared.set(symbol, candles);
+    const byDate = new Map<string, Candle[]>();
     for (const candle of candles) {
-      const session = sessions.at(-1);
-      if (!session || !sameDay(candle, session[0])) sessions.push([candle]);
-      else session.push(candle);
+      const day = date(candle);
+      const rows = byDate.get(day) ?? [];
+      rows.push(candle);
+      byDate.set(day, rows);
+      allDates.add(day);
     }
-    for (const dayCandles of sessions) {
+    sessions.set(symbol, byDate);
+  }
+  const tradesBySymbol = new Map<string, OrbTrade[]>();
+  const skippedBySymbol = new Map<string, { train: Record<OrbSkipReason, number>; test: Record<OrbSkipReason, number> }>();
+  for (const symbol of bySymbol.keys()) {
+    tradesBySymbol.set(symbol, []);
+    skippedBySymbol.set(symbol, { train: emptySkipped(), test: emptySkipped() });
+  }
+  const tradesByDate = new Map<string, number>();
+  const periodFor = (timeMs: number): "train" | "test" => timeMs < testCutoffMs ? "train" : "test";
+  for (const day of [...allDates].sort()) {
+    for (const symbol of prepared.keys()) {
+      const dayCandles = sessions.get(symbol)!.get(day);
+      if (!dayCandles) continue;
+      const skipped = skippedBySymbol.get(symbol)!;
       const range = calculateOpeningRange(dayCandles);
       if (!range) continue;
       const rangeSkip = openingRangeSkip(range);
-      if (rangeSkip) { skipped[periodFor(dayCandles[0].timeMs)][rangeSkip] += 1; continue; }
+      if (rangeSkip) {
+        skipped[periodFor(dayCandles[0].timeMs)][rangeSkip] += 1;
+        continue;
+      }
       let entered = false;
-      for (let i = ORB_CONFIG.openingCandles; i < dayCandles.length - 1; i += 1) {
-        if (entered) break;
-        const signal = getOrbSignal(dayCandles.slice(0, i + 1), range);
+      for (let i = ORB_CONFIG.openingCandles; i < dayCandles.length - 1 && !entered; i += 1) {
+        const signal = getOrbSignal(dayCandles, range, i);
         if (!signal) continue;
         const entryCandle = dayCandles[i + 1];
-        const day = date(entryCandle);
         if ((tradesByDate.get(day) ?? 0) >= ORB_CONFIG.maximumTradesAcrossStocksPerDay) {
-          skipped[periodFor(entryCandle.timeMs)]["daily-limit"] += 1; continue;
+          skipped[periodFor(entryCandle.timeMs)]["daily-limit"] += 1;
+          continue;
         }
-        const entryPrice = signal.side === "long" ? entryCandle.open * (1 + ORB_CONFIG.slippageRate) : entryCandle.open * (1 - ORB_CONFIG.slippageRate);
+        const entryPrice = signal.side === "long"
+          ? entryCandle.open * (1 + ORB_CONFIG.slippageRate)
+          : entryCandle.open * (1 - ORB_CONFIG.slippageRate);
         const sizing = quantityForOrb(entryPrice, signal.stopLoss);
-        if (sizing.quantity === 0) { skipped[periodFor(entryCandle.timeMs)]["risk-cap"] += 1; continue; }
-        if (sizing.riskCapped) skipped[periodFor(entryCandle.timeMs)]["risk-cap"] += 1;
-        const targetMove = Math.abs(signal.target - entryPrice) / entryPrice * 100;
-        if (targetMove < 2 * breakEvenMovePct(entryPrice, sizing.quantity)) {
-          skipped[periodFor(entryCandle.timeMs)]["cost-check"] += 1; continue;
+        if (sizing.quantity === 0) {
+          skipped[periodFor(entryCandle.timeMs)]["risk-cap"] += 1;
+          continue;
         }
-        let exit = dayCandles.at(-1)!;
+        if (sizing.riskCapped) skipped[periodFor(entryCandle.timeMs)]["risk-cap"] += 1;
+        if (Math.abs(signal.target - entryPrice) / entryPrice * 100 < 2 * breakEvenMovePct(entryPrice, sizing.quantity)) {
+          skipped[periodFor(entryCandle.timeMs)]["cost-check"] += 1;
+          continue;
+        }
+        let exit = dayCandles[dayCandles.length - 1];
         let exitReason: OrbTrade["exitReason"] = "forced-exit";
-        for (const candidate of dayCandles.slice(i + 1)) {
+        for (let j = i + 1; j < dayCandles.length; j += 1) {
+          const candidate = dayCandles[j];
           const stopHit = signal.side === "long" ? candidate.low <= signal.stopLoss : candidate.high >= signal.stopLoss;
           const targetHit = signal.side === "long" ? candidate.high >= signal.target : candidate.low <= signal.target;
-          if (stopHit || targetHit) { exit = candidate; exitReason = stopHit ? "stop-loss" : "target"; break; }
-          if (time(candidate) >= ORB_CONFIG.forcedExitAt) { exit = candidate; break; }
+          if (stopHit || targetHit) {
+            exit = candidate;
+            exitReason = stopHit ? "stop-loss" : "target";
+            break;
+          }
+          if (time(candidate) >= ORB_CONFIG.forcedExitAt) {
+            exit = candidate;
+            break;
+          }
         }
-        const exitPrice = signal.side === "long" ? exit.close * (1 - ORB_CONFIG.slippageRate) : exit.close * (1 + ORB_CONFIG.slippageRate);
-        const grossPnl = signal.side === "long" ? (exitPrice - entryPrice) * sizing.quantity : (entryPrice - exitPrice) * sizing.quantity;
+        const exitPrice = signal.side === "long"
+          ? exit.close * (1 - ORB_CONFIG.slippageRate)
+          : exit.close * (1 + ORB_CONFIG.slippageRate);
+        const grossPnl = signal.side === "long"
+          ? (exitPrice - entryPrice) * sizing.quantity
+          : (entryPrice - exitPrice) * sizing.quantity;
         const costs = roundTripCost(entryPrice, sizing.quantity).total;
-        trades.push({ symbol, side: signal.side, entryTimeMs: entryCandle.timeMs, exitTimeMs: exit.timeMs, entryPrice, exitPrice, quantity: sizing.quantity, grossPnl, costs, netPnl: grossPnl - costs, exitReason });
+        tradesBySymbol.get(symbol)!.push({
+          symbol, side: signal.side, entryTimeMs: entryCandle.timeMs, exitTimeMs: exit.timeMs,
+          entryPrice, exitPrice, quantity: sizing.quantity, grossPnl, costs,
+          netPnl: grossPnl - costs, exitReason
+        });
         tradesByDate.set(day, (tradesByDate.get(day) ?? 0) + 1);
         entered = true;
       }
     }
-    for (const trade of trades) allTrades.push(trade);
-    const train = trades.filter((trade) => trade.exitTimeMs < testCutoffMs);
-    const test = trades.filter((trade) => trade.exitTimeMs >= testCutoffMs);
+  }
+  const allTrades: OrbTrade[] = [];
+  const allSkipped = { train: emptySkipped(), test: emptySkipped() };
+  const periodResults = { train: new Map<string, OrbPeriodResult>(), test: new Map<string, OrbPeriodResult>() };
+  for (const symbol of prepared.keys()) {
+    const trades = tradesBySymbol.get(symbol)!;
+    const skipped = skippedBySymbol.get(symbol)!;
+    allTrades.push(...trades);
     for (const period of ["train", "test"] as const) {
       for (const reason of Object.keys(skipped[period]) as OrbSkipReason[]) allSkipped[period][reason] += skipped[period][reason];
     }
-    periodResults.train.set(symbol, summarize(train, skipped.train, 16));
-    periodResults.test.set(symbol, summarize(test, skipped.test, 8));
+    periodResults.train.set(symbol, summarize(trades.filter((trade) => trade.exitTimeMs < testCutoffMs), skipped.train, 16));
+    periodResults.test.set(symbol, summarize(trades.filter((trade) => trade.exitTimeMs >= testCutoffMs), skipped.test, 8));
   }
   return {
     ...periodResults,
