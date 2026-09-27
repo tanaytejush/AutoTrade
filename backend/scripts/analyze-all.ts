@@ -52,6 +52,7 @@ const order = { TRADEABLE: 0, WATCH: 1, AVOID: 2 };
 function inr(value: number | null): string {
   if (value === null) return "n/a";
   if (value >= 1_00_00_000) return `₹${(value / 1_00_00_000).toLocaleString("en-IN", { maximumFractionDigits: 2 })} Cr`;
+  if (value < 1_00_000) return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
   return `₹${(value / 1_00_000).toLocaleString("en-IN", { maximumFractionDigits: 2 })} L`;
 }
 console.table(results
