@@ -273,6 +273,7 @@ export function parseLtpResponse(data: unknown, scripCode: string, symbol: strin
       !("data" in data) || !data.data || typeof data.data !== "object") {
     throw malformed(provider, `LTP response is missing data for ${scripCode}`);
   }
+
   const entries = data.data as Record<string, unknown>;
   const value = entries[scripCode];
   if (!value || typeof value !== "object") {
@@ -284,6 +285,21 @@ export function parseLtpResponse(data: unknown, scripCode: string, symbol: strin
     throw malformed(provider, `${scripCode}.live_price must be a positive number`);
   }
   return { symbol, price };
+}
+
+export async function getQuotes(symbols: string[]): Promise<Map<string, Quote>> {
+  const resolved = await Promise.all(symbols.map(async (symbol) => ({
+    symbol,
+    scripCode: await resolveInstrumentToken(symbol)
+  })));
+  const data = await requestJson(
+    `${baseUrl()}/market/quotes/ltp?scrip-codes=${encodeURIComponent(resolved.map((item) => item.scripCode).join(","))}`,
+    { headers: headers() },
+    provider
+  );
+  const quotes = new Map<string, Quote>();
+  for (const item of resolved) quotes.set(item.symbol, parseLtpResponse(data, item.scripCode, item.symbol));
+  return quotes;
 }
 
 export const indiaBroker: Broker = {

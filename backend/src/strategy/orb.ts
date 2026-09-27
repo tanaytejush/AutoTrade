@@ -40,6 +40,34 @@ export interface OrbSkipped {
   reason: OrbSkipReason;
 }
 
+export interface OrbCandidate {
+  symbol: string;
+  candles: Candle[];
+  signal: OrbSignal;
+  signalIndex: number;
+  entryCandle: Candle;
+  rangePercent: number;
+}
+
+export function firstOrbCandidate(symbol: string, dayCandles: Candle[]): OrbCandidate | null {
+  const range = calculateOpeningRange(dayCandles);
+  if (!range || openingRangeSkip(range)) return null;
+  for (let i = ORB_CONFIG.openingCandles; i < dayCandles.length - 1; i += 1) {
+    const signal = getOrbSignal(dayCandles, range, i);
+    if (signal) {
+      return {
+        symbol,
+        candles: dayCandles,
+        signal,
+        signalIndex: i,
+        entryCandle: dayCandles[i + 1],
+        rangePercent: (range.high - range.low) / range.referencePrice * 100
+      };
+    }
+  }
+  return null;
+}
+
 export interface OrbPeriodResult {
   trades: OrbTrade[];
   skipped: Record<OrbSkipReason, number>;
@@ -182,14 +210,7 @@ export function runOrbBacktest(bySymbol: Map<string, Candle[]>, testCutoffMs: nu
   let competingSignalDays = 0;
   const periodFor = (timeMs: number): "train" | "test" => timeMs < testCutoffMs ? "train" : "test";
   for (const day of [...allDates].sort()) {
-    const candidates: Array<{
-      symbol: string;
-      candles: Candle[];
-      signal: OrbSignal;
-      signalIndex: number;
-      entryCandle: Candle;
-      rangePercent: number;
-    }> = [];
+    const candidates: OrbCandidate[] = [];
     for (const symbol of prepared.keys()) {
       const dayCandles = sessions.get(symbol)!.get(day);
       if (!dayCandles) continue;
@@ -201,18 +222,7 @@ export function runOrbBacktest(bySymbol: Map<string, Candle[]>, testCutoffMs: nu
         skipped[periodFor(dayCandles[0].timeMs)][rangeSkip] += 1;
         continue;
       }
-      let signalCandidate: typeof candidates[number] | null = null;
-      for (let i = ORB_CONFIG.openingCandles; i < dayCandles.length - 1; i += 1) {
-        const signal = getOrbSignal(dayCandles, range, i);
-        if (!signal) continue;
-        const entryCandle = dayCandles[i + 1];
-        signalCandidate = {
-          symbol, candles: dayCandles, signal, entryCandle,
-          signalIndex: i,
-          rangePercent: (range.high - range.low) / range.referencePrice * 100
-        };
-        break;
-      }
+      const signalCandidate = firstOrbCandidate(symbol, dayCandles);
       if (signalCandidate) candidates.push(signalCandidate);
     }
     if (candidates.length > ORB_CONFIG.maximumTradesAcrossStocksPerDay) competingSignalDays += 1;
