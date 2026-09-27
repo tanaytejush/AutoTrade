@@ -1,0 +1,25 @@
+{
+  "status": "success",
+  "data": {
+    "sod_balance": 100000,
+    "pledge_received": 0,
+    "pledge_remained": 0,
+    "detailed_avl_balance": {
+      "option_sell": 10000,
+      "future": 20000,
+      "option_buy": 30000,
+      "comm_option_buy": 0,
+      "eq_mis": 40000,
+      "eq_cnc": 50000,
+      "eq_mtf": 0
+    },
+    "withdrawal_balance": 45000,
+    "funds_added": 100000,
+    "funds_withdrawn": 0,
+    "realized_pnl": 2500,
+    "unrealized_pnl": 1500,
+    "brokerage": 100,
+    "eq_charges": 50,
+    "fno_charges": 50
+  }
+}
