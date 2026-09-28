@@ -9,6 +9,7 @@ import {
   filterCandlesForBacktest,
   type Candle
 } from "./historical.js";
+import { BrokerError } from "../../broker/types.js";
 
 function response(scripCode: string, candles: unknown[]) {
   return new Response(JSON.stringify({
@@ -157,6 +158,34 @@ test("retries 429 responses with backoff", async () => {
     assert.equal(calls, 3);
     assert.ok(sleeps >= 2);
     assert.equal(rows.length, 1);
+  });
+
+  test("stops on historical 401/403 with the endpoint in the auth error", async () => {
+    await withDatabase(async (databasePath) => {
+      await assert.rejects(
+        fetchCandles(
+          "RELIANCE",
+          "1day",
+          new Date("2026-01-01T00:00:00+05:30"),
+          new Date("2026-01-02T00:00:00+05:30"),
+          {
+            databasePath,
+            accessToken: "test-token",
+            resolveInstrumentToken: async () => "NSE_2885",
+            sleep: async () => undefined,
+            fetch: async () => new Response("", { status: 403 })
+          }
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof BrokerError);
+          assert.equal(error.code, "AUTH_EXPIRED");
+          assert.equal(error.status, 403);
+          assert.match(error.message, /TOKEN REJECTED \/ ACCESS DENIED/);
+          assert.match(error.message, /market\/historical/);
+          return true;
+        }
+      );
+    });
   });
 });
 

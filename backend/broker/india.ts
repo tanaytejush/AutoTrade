@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "csv-parse/sync";
 import { malformed, numberField, requestJson, requestText } from "./http.js";
-import type { Broker, Holding, HoldingsResult, Margin, Position, Quote } from "./types.js";
+import { BrokerError, type Broker, type Holding, type HoldingsResult, type Margin, type Position, type Quote } from "./types.js";
 
 const provider = "INDmoney";
 const cacheDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "../cache");
@@ -84,7 +84,7 @@ const requestMargin: MarginRequest = (options) => new Promise((resolve, reject) 
     response.on("data", (chunk: string) => { body += chunk; });
     response.on("end", () => {
       if (response.statusCode === 401 || response.statusCode === 403) {
-        reject(new Error("INDmoney token is expired or unauthorized."));
+      reject(new BrokerError(`INDmoney TOKEN REJECTED / ACCESS DENIED: ${options.url}`, "AUTH_EXPIRED", response.statusCode));
         return;
       }
       if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {

@@ -92,6 +92,11 @@ function authRejected(error: unknown): boolean {
   return error instanceof BrokerError && error.code === "AUTH_EXPIRED";
 }
 
+function authMessage(error: unknown): string {
+  if (error instanceof Error && error.message.includes("TOKEN REJECTED / ACCESS DENIED")) return error.message;
+  return `TOKEN REJECTED / ACCESS DENIED${error instanceof Error ? `: ${error.message}` : ""}`;
+}
+
 async function logger(directory: string, day: string): Promise<(event: string, data: Record<string, unknown>) => Promise<void>> {
   await mkdir(directory, { recursive: true });
   const path = resolve(directory, `${day}.jsonl`);
@@ -184,7 +189,7 @@ export async function runPaperOrchestrator(options: PaperRunOptions = {}): Promi
     await log("startup_self_check", { token: "valid", fundsReadable: true, symbolsResolved: PAPER_SYMBOLS.length, usableCapital: Math.min(500, fundsAtStartup.intradayAvailable ?? 0) });
   } catch (error) {
     if (authRejected(error)) {
-      console.log("TOKEN REJECTED");
+      console.log(authMessage(error));
       return;
     }
     await log("startup_failed", { message: error instanceof Error ? error.message : String(error) });
@@ -269,7 +274,7 @@ export async function runPaperOrchestrator(options: PaperRunOptions = {}): Promi
           await log("fill", { symbol, side: signal.side, quantity: sizing.quantity, price: entryPrice, paper: true });
         } catch (error) {
           if (authRejected(error)) {
-            console.log("TOKEN REJECTED");
+            console.log(authMessage(error));
             await closeAll("token-rejected");
             return;
           }
@@ -298,7 +303,7 @@ export async function runPaperOrchestrator(options: PaperRunOptions = {}): Promi
           }
         } catch (error) {
           if (authRejected(error)) {
-            console.log("TOKEN REJECTED");
+            console.log(authMessage(error));
             await closeAll("token-rejected");
             return;
           }

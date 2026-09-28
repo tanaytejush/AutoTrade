@@ -23,6 +23,11 @@ import { PAPER_SYMBOLS, type PaperApi, type PaperClock, retry } from "./run.js";
 const IST = "Asia/Kolkata";
 const root = resolve(process.cwd(), "..");
 
+function authMessage(error: unknown): string {
+  if (error instanceof Error && error.message.includes("TOKEN REJECTED / ACCESS DENIED")) return error.message;
+  return `TOKEN REJECTED / ACCESS DENIED${error instanceof Error ? `: ${error.message}` : ""}`;
+}
+
 export interface SignalApi extends PaperApi {
   positions(): Promise<unknown>;
   positionsParsed(): Promise<Array<{ symbol: string; quantity: number }>>;
@@ -158,7 +163,14 @@ export async function runSignalMode(options: SignalOptions = {}): Promise<void> 
   let apiCalls = 0;
   const call = async <T>(operation: () => Promise<T>): Promise<T> => {
     apiCalls += 1;
-    return retry(operation, async (error) => log("api_error", { message: error instanceof Error ? error.message : String(error) }), clock.sleep);
+    try {
+      return await retry(operation, async (error) => log("api_error", { message: error instanceof Error ? error.message : String(error) }), clock.sleep);
+    } catch (error) {
+      if (error instanceof BrokerError && error.code === "AUTH_EXPIRED") {
+        console.log(authMessage(error));
+      }
+      throw error;
+    }
   };
   if (replay) {
     for (const symbol of PAPER_SYMBOLS) data.set(symbol, await api.candles(symbol, start, end));
@@ -170,6 +182,7 @@ export async function runSignalMode(options: SignalOptions = {}): Promise<void> 
     try {
       gap = await call(() => api.niftyGapPercent());
     } catch (error) {
+      if (error instanceof BrokerError && error.code === "AUTH_EXPIRED") throw error;
       await log("nifty_gap_error", { message: error instanceof Error ? error.message : String(error) });
       gap = Number.POSITIVE_INFINITY;
     }

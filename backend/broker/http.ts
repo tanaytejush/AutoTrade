@@ -16,7 +16,7 @@ export async function requestJson(
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new BrokerError(`${provider} token is expired or unauthorized.`, "AUTH_EXPIRED", response.status);
+    throw new BrokerError(`${provider} TOKEN REJECTED / ACCESS DENIED: ${url}`, "AUTH_EXPIRED", response.status);
   }
   if (response.status === 429) {
     throw new BrokerError(`${provider} rate limit exceeded.`, "RATE_LIMITED", response.status);
@@ -48,7 +48,7 @@ export async function requestText(
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new BrokerError(`${provider} token is expired or unauthorized.`, "AUTH_EXPIRED", response.status);
+    throw new BrokerError(`${provider} TOKEN REJECTED / ACCESS DENIED: ${url}`, "AUTH_EXPIRED", response.status);
   }
   if (response.status === 429) {
     throw new BrokerError(`${provider} rate limit exceeded.`, "RATE_LIMITED", response.status);

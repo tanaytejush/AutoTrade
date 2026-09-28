@@ -27,6 +27,16 @@ test("sets long stop at range low and target at two times risk", () => {
   assert.equal(signal?.target, 117);
 });
 
+test("does not signal again while price remains outside the range", () => {
+  const rows = [
+    candle(0, 100),
+    candle(5, 100),
+    candle(10, 105, 106, 104, 105),
+    candle(15, 105, 106, 104, 105)
+  ];
+  assert.equal(getOrbSignal(rows, { high: 104, low: 99, referencePrice: 100 }, 3), null);
+});
+
 test("risk cap reduces quantity", () => {
   const sizing = quantityForOrb(100, 90);
   assert.equal(sizing.quantity, 2);

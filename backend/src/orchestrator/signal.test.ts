@@ -111,7 +111,7 @@ test("breakout signal closing at 14:35 is rejected by the live cutoff", async ()
   }
 });
 
-test("late start misses a breakout that closed before startup", async () => {
+test("12:44 start misses a 10:15 breakout that is still above the range", async () => {
   const previousPaperTrading = process.env.PAPER_TRADING;
   process.env.PAPER_TRADING = "true";
   const directory = await mkdtemp(join(tmpdir(), "signal-late-start-"));
@@ -119,14 +119,15 @@ test("late start misses a breakout that closed before startup", async () => {
   const base = new Date("2026-09-25T09:15:00+05:30").getTime();
   const rows = [
     ...candles(symbol).slice(0, 3),
-    { scripCode: symbol, interval: "5minute" as const, timeMs: base + 900_000, open: 100, high: 100.2, low: 99.8, close: 100, volume: 1 },
-    { scripCode: symbol, interval: "5minute" as const, timeMs: base + 1_200_000, open: 100, high: 101.2, low: 100, close: 101, volume: 1 }
+    { scripCode: symbol, interval: "5minute" as const, timeMs: new Date("2026-09-25T10:05:00+05:30").getTime(), open: 100, high: 100.2, low: 99.8, close: 100, volume: 1 },
+    { scripCode: symbol, interval: "5minute" as const, timeMs: new Date("2026-09-25T10:10:00+05:30").getTime(), open: 100, high: 101.2, low: 100, close: 101, volume: 1 },
+    { scripCode: symbol, interval: "5minute" as const, timeMs: new Date("2026-09-25T10:15:00+05:30").getTime(), open: 101, high: 101.4, low: 100.8, close: 101.2, volume: 1 }
   ];
   try {
     const { output } = await captureOutput(() => runSignalMode({
       replay: true,
       replayDate: "2026-09-25",
-      clock: clockAt("2026-09-25T10:00:00+05:30"),
+      clock: clockAt("2026-09-25T12:44:00+05:30"),
       api: testApi(rows, symbol),
       logDirectory: directory,
       positionsDirectory: directory

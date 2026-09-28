@@ -132,12 +132,15 @@ export function openingRangeSkip(range: OpeningRange): OrbSkipReason | null {
 
 export function getOrbSignal(candles: Candle[], range: OpeningRange, index = candles.length - 1): OrbSignal | null {
   const latest = candles[index];
-  if (!latest || time(latest) < "09:30" || time(latest) > ORB_CONFIG.noEntryAfter) return null;
+  const previous = candles[index - 1];
+  if (!latest || !previous || time(latest) < "09:30" || time(latest) > ORB_CONFIG.noEntryAfter) return null;
   if (latest.close > range.high) {
+    if (previous.close > range.high) return null;
     const risk = latest.close - range.low;
     return risk > 0 ? { side: "long", stopLoss: range.low, target: latest.close + risk * ORB_CONFIG.riskReward, signalTimeMs: latest.timeMs } : null;
   }
   if (latest.close < range.low) {
+    if (previous.close < range.low) return null;
     const risk = range.high - latest.close;
     return risk > 0 ? { side: "short", stopLoss: range.high, target: latest.close - risk * ORB_CONFIG.riskReward, signalTimeMs: latest.timeMs } : null;
   }

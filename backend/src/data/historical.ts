@@ -173,6 +173,9 @@ async function fetchWindow(
       continue;
     }
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new BrokerError(`INDmoney TOKEN REJECTED / ACCESS DENIED: ${url}`, "AUTH_EXPIRED", response.status);
+      }
       throw new BrokerError(`INDmoney historical request failed with HTTP ${response.status}.`, "REQUEST_FAILED", response.status);
     }
     const data = await response.json() as unknown;

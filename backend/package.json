@@ -15,7 +15,7 @@
     "fetch:backtest-data": "tsx scripts/fetch-backtest-data.ts",
     "backtest:orb": "tsx scripts/backtest-orb.ts"
     ,"bot:paper": "tsx --import ./scripts/load-env.ts scripts/paper-bot.ts"
-    ,"bot:signal": "tsx --import ./scripts/load-env.ts scripts/paper-bot.ts"
+    ,"bot:signal": "tsx --import ./scripts/load-env.ts scripts/signal-bot.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
