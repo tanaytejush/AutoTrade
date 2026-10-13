@@ -5,5 +5,9 @@ node_modules/
 dist/
 build/
 backend/cache/
+*.sqlite
+*.sqlite3
+*.db
+*.log
 __pycache__/
 *.py[cod]
